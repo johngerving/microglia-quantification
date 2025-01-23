@@ -11,6 +11,8 @@ from .visualization_hook import (DetVisualizationHook,
                                  GroundingVisualizationHook,
                                  TrackVisualizationHook)
 from .yolox_mode_switch_hook import YOLOXModeSwitchHook
+from .find_iou import FindIoU
+from .custom_logger_hook import CustomLoggerHook
 
 __all__ = [
     'YOLOXModeSwitchHook', 'SyncNormHook', 'CheckInvalidLossHook',
