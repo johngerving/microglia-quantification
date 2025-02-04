@@ -20,29 +20,44 @@ default_hooks = dict(
     )
 )
 
+vis_backends = [
+    dict(type='LocalVisBackend'),
+    dict(type='WandbVisBackend',
+         init_kwargs={
+            'project': 'microglia',
+            'group': 'test'
+         })
+]
+visualizer = dict(
+    type='DetLocalVisualizer',
+    vis_backends=vis_backends,
+    name='visualizer')
+
 dataset_type = 'CocoDataset'
 data_root = '/workspace/dataset/'
 classes = ('microglia', )
 backend_args = None
 
+metainfo=dict(classes=classes, palette=[200,20,60])
+
 train_dataloader = dict(
     dataset=dict(
         dataset=dict(
             data_root=data_root,
-            metainfo=dict(classes=classes),
+            metainfo=metainfo,
             ann_file='train/_annotations.coco.json',
             data_prefix=dict(img='train/'))))
 test_dataloader = dict(
     dataset=dict(
         data_root=data_root,
-        metainfo=dict(classes=classes),
+        metainfo=metainfo,
         ann_file='test/_annotations.coco.json',
         data_prefix=dict(img='test/')))
 
 val_dataloader = dict(
     dataset=dict(
         data_root=data_root,
-        metainfo=dict(classes=classes),
+        metainfo=metainfo,
         ann_file='valid/_annotations.coco.json',
         data_prefix=dict(img='valid/')))
 
