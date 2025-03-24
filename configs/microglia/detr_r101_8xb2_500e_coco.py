@@ -1,5 +1,5 @@
 # The new config inherits a base config to highlight the necessary modification
-_base_ = '../faster_rcnn/faster-rcnn_x101-32x8d_fpn_ms-3x_coco.py'
+_base_ = '../detr/detr_r50_8xb2-150e_coco.py'
 
 # custom_imports = dict(imports=['mmdet.engine.hooks.find_iou'], allow_failed_imports=False)
 # custom_hooks = [
@@ -7,11 +7,11 @@ _base_ = '../faster_rcnn/faster-rcnn_x101-32x8d_fpn_ms-3x_coco.py'
 # ]
 
 # Modify dataset related settings
-custom_imports = dict(imports=['mmdet.engine.runner.custom_runner', 'mmdet.engine.hooks.custom_logger_hook'], allow_failed_imports=False)
-runner_type = 'CustomRunner'
-custom_hooks = [
-    dict(type='CustomLoggerHook')        
-]
+# custom_imports = dict(imports=['mmdet.engine.runner.custom_runner', 'mmdet.engine.hooks.custom_logger_hook'], allow_failed_imports=False)
+# runner_type = 'CustomRunner'
+# custom_hooks = [
+#     dict(type='CustomLoggerHook')        
+# ]
 
 default_hooks = dict(
     checkpoint=dict(
@@ -21,7 +21,7 @@ default_hooks = dict(
 )
 
 dataset_type = 'CocoDataset'
-data_root = '/workspace/dataset/'
+data_root = '/workspace/copy-dataset/'
 classes = ('microglia', )
 backend_args = None
 
@@ -29,11 +29,10 @@ metainfo=dict(classes=classes, palette=[200,20,60])
 
 train_dataloader = dict(
     dataset=dict(
-        dataset=dict(
-            data_root=data_root,
-            metainfo=metainfo,
-            ann_file='train/_annotations.coco.json',
-            data_prefix=dict(img='train/'))))
+        data_root=data_root,
+        metainfo=metainfo,
+        ann_file='train/_annotations.coco.json',
+        data_prefix=dict(img='train/')))
 test_dataloader = dict(
     dataset=dict(
         data_root=data_root,
@@ -49,15 +48,23 @@ val_dataloader = dict(
         data_prefix=dict(img='valid/')))
 
 test_evaluator = dict(
-        ann_file=data_root + 'test/_annotations.coco.json')
-val_evaluator = dict(
-        ann_file=data_root + 'valid/_annotations.coco.json')
+        type='CocoMetric',
+        ann_file=data_root + 'test/_annotations.coco.json',
+        metric='bbox',
+        backend_args=backend_args)
 
+val_evaluator = dict(
+        type='CocoMetric',
+        ann_file=data_root + 'valid/_annotations.coco.json',
+        metric='bbox',
+        backend_args=backend_args)
+
+load_from = 'https://download.openmmlab.com/mmdetection/v3.0/detr/detr_r50_8xb2-150e_coco/detr_r50_8xb2-150e_coco_20221023_153551-436d03e8.pth'
 
 # We also need to change the num_classes in head to match the dataset's annotation
 model = dict(
-    roi_head=dict(
-        bbox_head=dict(num_classes=1)))
+    bbox_head=dict(num_classes=1))
+
 
 # 15 epochs
-train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=15, val_interval=1)
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=150, val_interval=1)
