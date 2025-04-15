@@ -114,13 +114,13 @@ data
 *.pkl.json
 *.log.json
 docs/modelzoo_statistics.md
-mmdet/.mim
-mmdetection/work_dirs/
-mmyolo/work_dirs
+mmyolo/.mim
+output/
+work_dirs
+yolov5-6.1/
 
 # Pytorch
 *.pth
+*.pt
 *.py~
 *.sh~
-
-wandb
