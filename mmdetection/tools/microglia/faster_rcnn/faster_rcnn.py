@@ -14,24 +14,22 @@ from mmengine.runner import Runner
 
 from mmdet.utils import setup_cache_size_limit_of_dynamo
 
-import ray
-from ray.util.actor_pool import ActorPool
-import torch
 from contextlib import nullcontext
 from mmengine.model import is_model_wrapper
 from mmengine.runner.amp import autocast
+import torch
 
 import wandb
 
-print(os.environ.get("CUDA_VISIBLE_DEVICES"))
-NUM_GPUS = len(os.environ.get("CUDA_VISIBLE_DEVICES").split(","))
+num_gpus = torch.cuda.device_count()
 
-if NUM_GPUS < 1:
-    raise Exception("NUM_GPUS is must be greater than 0")
+if num_gpus < 1:
+    raise Exception("num_gpus must be greater than 0")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('config', help='train config file path')
+    parser.add_argument('--lr', type=float)
+    parser.add_argument('--momentum', type=float)
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--amp',
@@ -75,55 +73,53 @@ def parse_args():
 
     return args
 
-@ray.remote(num_cpus=1, num_gpus=1)
-class Actor:
-    def train(self, cfg, project):
-        # build the runner from config
-        if 'runner_type' not in cfg:
-            # build the default runner
-            runner = Runner.from_cfg(cfg)
-        else:
-            # build customized runner from the registry
-            # if 'runner_type' is set in the cfg
-            runner = RUNNERS.build(cfg)
+def train(cfg, project):
+    # build the runner from config
+    if 'runner_type' not in cfg:
+        # build the default runner
+        runner = Runner.from_cfg(cfg)
+    else:
+        # build customized runner from the registry
+        # if 'runner_type' is set in the cfg
+        runner = RUNNERS.build(cfg)
 
-        print("STARTING TRAINING RUN")
+    print("STARTING TRAINING RUN")
 
-        # start training
-        runner.train()
+    # start training
+    runner.train()
 
-        tag, log_str = runner.log_processor.get_log_after_epoch(
-            runner, len(runner.val_dataloader), 'val') 
+    tag, log_str = runner.log_processor.get_log_after_epoch(
+        runner, len(runner.val_dataloader), 'val') 
 
-        metrics = dict(tag)
+    metrics = dict(tag)
 
-        box_map_50 = metrics["coco/bbox_mAP_50"]
+    box_map_50 = metrics["coco/bbox_mAP_50"]
 
-        return box_map_50
+    return box_map_50
 
-def train_crossval(cfg):
-    num_gpus = NUM_GPUS
-    pool = ActorPool([Actor.remote() for i in range(num_gpus)])
-    print(pool)
+def train_crossval(cfg, hyperparams):
     n_folds = 5
-
 
     run = wandb.init()
 
-    lr = wandb.config.lr
-    momentum = wandb.config.momentum
+    print(wandb.config)
+
+    lr = hyperparams['lr']
+    momentum = hyperparams['momentum']
 
     results = []
 
     for i in range(1, n_folds+1):
         fold_cfg = copy.deepcopy(cfg)
 
+        fold_cfg.work_dir = fold_cfg.work_dir + f'{run.id}-{i}'
+
         data_root = '/workspace/dataset/'
         
         train_annotations = f'train/train_annotations_{i}_{n_folds}.json'
         test_annotations = f'train/test_annotations_{i}_{n_folds}.json'
 
-        classes = ('microglia', )
+        classes = ('activated', 'non-activated')
         backend_args = None
 
         metainfo=dict(classes=classes, palette=[200,20,60])
@@ -149,13 +145,10 @@ def train_crossval(cfg):
         fold_cfg.optim_wrapper.optimizer.lr = lr
         fold_cfg.optim_wrapper.optimizer.momentum = momentum
 
-        # fold_name = cv_name + f'_fold_{i}'
+        # fold_name = cv_name + f'_fold_{i}
 
         print("Submitting fold", i)
-        pool.submit(lambda a, args: a.train.remote(*args), (fold_cfg, 'microglia'))
-
-    for i in range(n_folds):
-        result = pool.get_next_unordered()
+        result = train(fold_cfg, 'microglia')
         results.append(result)
 
     print("LOGGING BOX MAP")
@@ -165,12 +158,14 @@ def train_crossval(cfg):
 def main():
     args = parse_args()
 
+    config_file = '/workspace/mmdetection/mmdetection/configs/microglia/faster-rcnn_x101-32x8d_fpn_ms-3x_coco_microglia.py'
+
     # Reduce the number of repeated compilations and improve
     # training speed.
     setup_cache_size_limit_of_dynamo()
 
     # load config
-    cfg = Config.fromfile(args.config)
+    cfg = Config.fromfile(config_file)
     cfg.launcher = args.launcher
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
@@ -182,7 +177,7 @@ def main():
     elif cfg.get('work_dir', None) is None:
         # use config filename as default work_dir if cfg.work_dir is None
         cfg.work_dir = osp.join('./work_dirs',
-                                osp.splitext(osp.basename(args.config))[0])
+                                osp.splitext(osp.basename(config_file))[0])
 
     # enable automatic-mixed-precision training
     if args.amp is True:
@@ -209,23 +204,12 @@ def main():
         cfg.resume = True
         cfg.load_from = args.resume
 
-    group_name = ''.join(random.choice(string.ascii_lowercase) for x in range(5))
-    cv_name = 'cv_' + group_name 
+    hyperparams = {
+                "lr": args.lr,
+                "momentum": args.momentum
+            }
 
-    sweep_configuration = {
-        "method": "random",
-        "name": "sweep",
-        "metric": {"goal": "maximize", "name": "box_map"},
-        "parameters": {
-            "lr": {"max": 0.01, "min": 0.0001},
-            "momentum": {"max": 1.0, "min": 0.2}
-        },
-    }
-
-    sweep_id = wandb.sweep(sweep=sweep_configuration, project="microglia")
-
-    wandb.agent(sweep_id, function=partial(train_crossval, cfg), count=10)
-
+    train_crossval(cfg, hyperparams)
 
 if __name__ == '__main__':
     main()

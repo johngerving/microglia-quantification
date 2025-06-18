@@ -1,28 +1,28 @@
 # The new config inherits a base config to highlight the necessary modification
 _base_ = '../faster_rcnn/faster-rcnn_x101-32x8d_fpn_ms-3x_coco.py'
 
-# custom_imports = dict(imports=['mmdet.engine.hooks.find_iou'], allow_failed_imports=False)
-# custom_hooks = [
-#     dict(type='FindIoU', name='find_iou')
-# ]
-
-# Modify dataset related settings
-custom_imports = dict(imports=['mmdet.engine.runner.custom_runner', 'mmdet.engine.hooks.custom_logger_hook'], allow_failed_imports=False)
-runner_type = 'CustomRunner'
-custom_hooks = [
-    dict(type='CustomLoggerHook')        
-]
+interval = 1
+max_keep_ckpts = 1
+save_best = 'coco/bbox_mAP'
 
 default_hooks = dict(
+    early_stopping=dict(
+        type="EarlyStoppingHook",
+        monitor="coco/bbox_mAP",
+        patience=10,
+        min_delta=0.005),
     checkpoint=dict(
-        type='CheckpointHook',
-        max_keep_ckpts=5
-    )
+        type="CheckpointHook",
+        interval=interval,
+        save_begin=100,
+        max_keep_ckpts=max_keep_ckpts,
+        save_best=save_best)
 )
 
 dataset_type = 'CocoDataset'
 data_root = '/workspace/dataset/'
-classes = ('microglia', )
+classes = ('activated', 'non-activated')
+num_classes = len(classes)
 backend_args = None
 
 metainfo=dict(classes=classes, palette=[200,20,60])
@@ -57,7 +57,6 @@ val_evaluator = dict(
 # We also need to change the num_classes in head to match the dataset's annotation
 model = dict(
     roi_head=dict(
-        bbox_head=dict(num_classes=1)))
+        bbox_head=dict(num_classes=num_classes)))
 
-# 15 epochs
-train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=15, val_interval=1)
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=75, val_interval=1)
