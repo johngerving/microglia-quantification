@@ -1,20 +1,45 @@
-_base_ = '../deformable_detr/deformable-detr_r50_16xb2-50e_coco.py'
+_base_ = '../../dino/dino-5scale_swin-l_8xb2-36e_coco.py'
 
 dataset_type = 'CocoDataset'
-data_root = '/workspace/copy-dataset/'
-classes = ('microglia', )
+data_root = '/workspace/dataset/'
+classes = ('activated', 'non-activated')
 num_classes = len(classes)
+interval = 1
+max_keep_ckpts = 1
+save_best = 'coco/bbox_mAP'
+max_epochs = 70
 
 metainfo=dict(classes=classes, palette=[200,20,60])
 
-default_hooks = dict(checkpoint=dict(type='CheckpointHook', save_best='coco/bbox_mAP', max_keep_ckpts=2))
 
-model = dict(
-    with_box_refine=True,
-    bbox_head=dict(
-        num_classes=num_classes,
-    ),
+default_hooks = dict(
+    early_stopping=dict(
+        type="EarlyStoppingHook",
+        monitor="coco/bbox_mAP",
+        patience=10,
+        min_delta=0.005),
+    checkpoint=dict(
+        type="CheckpointHook",
+        interval=interval,
+        save_begin=1,
+        max_keep_ckpts=max_keep_ckpts,
+        save_best=save_best)
 )
+
+vis_backends = [
+    dict(type='LocalVisBackend'),
+    dict(type='TensorboardVisBackend'),
+    dict(type='WandbVisBackend',
+         init_kwargs={
+            'project': 'microglia',
+            'group': 'dino'
+         })
+]
+visualizer = dict(
+    type='DetLocalVisualizer',
+    vis_backends=vis_backends,
+    name='visualizer')
+
 
 train_dataloader = dict(
     dataset=dict(
@@ -44,7 +69,7 @@ val_evaluator = dict(
 # optimizer
 optim_wrapper = dict(
     type='OptimWrapper',
-    optimizer=dict(type='AdamW', lr=0.0002, weight_decay=0.0001),
+    optimizer=dict(type='AdamW', lr=0.0001, weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
     paramwise_cfg=dict(
         custom_keys={
@@ -52,11 +77,6 @@ optim_wrapper = dict(
             'sampling_offsets': dict(lr_mult=0.1),
             'reference_points': dict(lr_mult=0.1)
         }))
-
-# learning policy
-max_epochs = 50
-train_cfg = dict(
-    type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
 
 param_scheduler = [
     dict(
@@ -69,3 +89,21 @@ param_scheduler = [
 ]
 
 auto_scale_lr = dict(base_batch_size=8)
+
+train_cfg = dict(
+    type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
+param_scheduler = [
+    dict(
+        type='MultiStepLR',
+        begin=0,
+        end=max_epochs,
+        by_epoch=True,
+        milestones=[27, 33],
+        gamma=0.1)
+]
+
+model = dict(
+    bbox_head=dict(
+        num_classes=num_classes,
+    ),
+)
